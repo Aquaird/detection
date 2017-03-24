@@ -22,31 +22,49 @@ class Full_Connected_Layer(object):
     def __init__(self, is_training, batch_size, input_size, output_size, input_data, name):
         with tf.variable_scope(name):
 
-            #print(name+": inputs shape:")
-            #print(input_data.get_shape())
+            print(name+": inputs shape:")
+            print(input_data.get_shape())
             self.is_training = is_training
             self.input_size = input_size
             self.output_size = output_size
             self.batch_size = batch_size
 
-            w_fc = tf.get_variable("w", [input_size, output_size], dtype=data_type(), initializer=tf.random_normal_initializer())
+            init_value = np.random.randn(input_size, output_size) / np.sqrt(input_size/2)
+            w_fc = tf.get_variable("w", [input_size, output_size], initializer=tf.constant_initializer(init_value))
             b_fc = tf.get_variable("b", [output_size], dtype=data_type(), initializer = tf.constant_initializer(0.0))
 
             input_data = tf.reshape(input_data, [-1, input_size])
             self._out = tf.nn.relu(tf.add(tf.matmul(input_data, w_fc), b_fc))
             self._out = tf.reshape(self._out, [batch_size, -1,output_size])
-            #print(name+": outputs shape:")
-            #print(self._out.get_shape())
+            print(name+": outputs shape:")
+            print(self._out.get_shape())
 
     @property
     def out(self):
         return self._out
 
+
+class Convolutional_Layer(object):
+    def __init__(self, input_size, input_data, filter_size, name):
+        with tf.variable_scope(name):
+            init_value = np.random.randn(input_size, input_size) / np.sqrt(input_size/2)
+            conv_w = tf.get_variable("w", [filter_size, input_size, input_size], initializer=tf.constant_initializer(init_value))
+            conv_b = tf.get_variable("b", [input_size])
+            self._out = tf.nn.relu( tf.nn.conv1d(input_data, conv_w, stride=1, padding='SAME', use_cudnn_on_gpu=True, data_format='NHWC') + conv_b)
+
+    @property
+    def out(self):
+        return self._out
+
+
 class Regression_Layer(object):
     def __init__(self, batch_size, input_size, input_data, prev_size, prev_data, name):
         with tf.variable_scope(name):
-
-            w_input = tf.get_variable("w_i", [input_size, prev_size])
+            init_value = np.random.randn(input_size, prev_size) / np.sqrt(input_size/2)
+            w_input = tf.get_variable("w_i",
+                                      [input_size, prev_size],
+                                      initializer=tf.constant_initializer(init_value)
+                                      )
             w_preb = tf.get_variable("w_p", [prev_size, prev_size])
             b_h = tf.get_variable("b_h", [prev_size])
 
@@ -55,7 +73,8 @@ class Regression_Layer(object):
             self._h = tf.add(tf.matmul(input_data, w_input), tf.matmul(prev_data, w_preb))
             self._h = tf.nn.relu(tf.add(self._h, b_h))
 
-            w_out = tf.get_variable("w_o", [prev_size, 1])
+            init_value = np.random.randn(prev_size, 1) / np.sqrt(prev_size)
+            w_out = tf.get_variable("w_o", [prev_size, 1], initializer=tf.constant_initializer(init_value))
             b_out = tf.get_variable("b_o", [1])
             self._o = tf.nn.relu(tf.add(tf.matmul(self._h, w_out), b_out))
             self._o = tf.reshape(self._o, [batch_size, -1, 1])
@@ -78,8 +97,8 @@ class LSTM_Layer(object):
     def __init__(self, is_training, keep_prob, batch_size, size, input_data, input_lengths, name):
         with tf.variable_scope(name):
 
-            #print(name+": inputs shape:")
-            #print(input_data.get_shape())
+            print(name+": inputs shape:")
+            print(input_data.get_shape())
 
 
             lstm_cell = tf.contrib.rnn.LSTMCell(size, forget_bias=1.0)
@@ -111,10 +130,14 @@ class LSTM_Layer(object):
 class Multi_LSTM_Layer(object):
 
     def __init__(self, is_training, config, input_data, input_lengths, name):
-        with tf.variable_scope(name) as scope:
+        with tf.variable_scope(name):
             self.is_training = is_training
-            self.size = config.hidden_size
-            self.input_size = config.input_size
+            if config.is_stacked :
+                self.input_size = config.input_size * 3
+                self.size = config.hidden_size * 3
+            else:
+                self.size = config.hidden_size
+                self.input_size = config.input_size
             self.batch_size = config.batch_size
             self.inputs = input_data
             self.input_lengths = input_lengths
@@ -126,20 +149,20 @@ class Multi_LSTM_Layer(object):
             lstm1 = LSTM_Layer(is_training, config.keep_prob, self.batch_size, self.size, fc1_output, input_lengths, name="lstm1")
             lstm1_output = lstm1.outputs
             # fc2 layer
-            fc2 = Full_Connected_Layer(is_training, self.batch_size, self.size, self.size+10, lstm1_output, name='fc2')
+            fc2 = Full_Connected_Layer(is_training, self.batch_size, self.size, self.size, lstm1_output, name='fc2')
             fc2_output = fc2.out
             # LSTM 2 layer
-            lstm2 = LSTM_Layer(is_training, config.keep_prob, self.batch_size, self.size+10, fc2_output, input_lengths, name="lstm2")
+            lstm2 = LSTM_Layer(is_training, config.keep_prob, self.batch_size, self.size, fc2_output, input_lengths, name="lstm2")
             lstm2_output = lstm2.outputs
             # fc3 layer
-            fc3 = Full_Connected_Layer(is_training, self.batch_size, self.size+10, self.size, lstm2_output, name='fc3')
+            fc3 = Full_Connected_Layer(is_training, self.batch_size, self.size, self.size, lstm2_output, name='fc3')
             fc3_output = fc3.out
             # LSTM 3 layer
             lstm3 = LSTM_Layer(is_training, config.keep_prob, self.batch_size, self.size, fc3_output, input_lengths, name="lstm3")
             lstm3_output = lstm3.outputs
             # fc4 layer
             fc4 = Full_Connected_Layer(is_training, self.batch_size, self.size, self.size, lstm3_output, name='fc4')
-            self._outputs = fc4_output = fc4.out
+            self._outputs = fc4.out
 
 
 
@@ -175,21 +198,33 @@ class Model(object):
 
         sm,t1,t2 = tf.split(self._inputs,3,2)
 
-        """smooth sub-network"""
-        self._sm_network = Multi_LSTM_Layer(is_training, config, sm, self._lengths,name="smooth")
-        sm_outputs = self._sm_network.outputs
-
-
-        if(config.baseline == True):
-            self.LSTM_outputs = sm_outputs
-            LSTM_outputs_size = size
+        input_0 = sm
+        if(config.convolution == True):
+            self._conv1_network = Convolutional_Layer(input_size, sm, 2, 'conv1')
+            input_1 = self._conv1_network.out
+            self._conv2_network = Convolutional_Layer(input_size, input_1, 2, 'conv2')
+            input_2 = self._conv2_network.out
         else:
-            """t1 sub-network"""
-            self._t1_network = Multi_LSTM_Layer(is_training, config, t1, self._lengths, name="t1")
+            input_1 = t1
+            input_2 = t2
+
+        if config.is_stacked:
+            lstm_input = tf.concat([input_0, input_1, input_2], axis=2)
+            self._lstm_network = Multi_LSTM_Layer(is_training, config, lstm_input, self._lengths, name='all')
+            self.LSTM_outputs = self._lstm_network.outputs
+            LSTM_outputs_size = size * 3
+
+        else:
+            #smooth sub-network
+            self._sm_network = Multi_LSTM_Layer(is_training, config, input_0, self._lengths,name="smooth")
+            sm_outputs = self._sm_network.outputs
+
+            #t1 sub-network
+            self._t1_network = Multi_LSTM_Layer(is_training, config, input_1, self._lengths, name="t1")
             t1_outputs = self._t1_network.outputs
 
-            """t2 sub-network"""
-            self._t2_network = Multi_LSTM_Layer(is_training, config, t2, self._lengths, name="t2")
+            #t2 sub-network
+            self._t2_network = Multi_LSTM_Layer(is_training, config, input_2, self._lengths, name="t2")
             t2_outputs = self._t2_network.outputs
 
             self.LSTM_outputs = tf.concat([sm_outputs, t1_outputs, t2_outputs], axis=2)
@@ -198,7 +233,12 @@ class Model(object):
         with tf.variable_scope("softmax"):
 
             # prediction
-            softmax_w = tf.get_variable("softmax_w", [LSTM_outputs_size, output_size], dtype=data_type(), initializer=tf.truncated_normal_initializer(stddev=0.01))
+            init_value = np.random.randn(LSTM_outputs_size, output_size) / np.sqrt(LSTM_outputs_size)
+            softmax_w = tf.get_variable("softmax_w",
+                                        [LSTM_outputs_size, output_size],
+                                        initializer=tf.constant_initializer(init_value)
+                                        )
+
             softmax_b = tf.get_variable("softmax_b", [output_size], dtype=data_type(), initializer=tf.constant_initializer(0.1, dtype=data_type()))
 
             softmax_input = tf.reshape(self.LSTM_outputs, [-1, LSTM_outputs_size])
@@ -222,13 +262,16 @@ class Model(object):
         """ regression layer"""
         with tf.variable_scope("regression"):
 
-            w_input = tf.get_variable("w_i", [LSTM_outputs_size, output_size])
+            init_value = np.random.randn(LSTM_outputs_size, output_size) / np.sqrt(LSTM_outputs_size/2)
+            w_input = tf.get_variable("w_i", [LSTM_outputs_size, output_size], initializer=tf.constant_initializer(init_value))
             b_input = tf.get_variable("b_i", [output_size])
-            w_preb = tf.get_variable("w_p", [output_size, output_size])
+
+            init_value = np.random.randn(output_size, output_size) / np.sqrt(output_size/2)
+            w_preb = tf.get_variable("w_p", [output_size, output_size], initializer=tf.constant_initializer(init_value))
             b_h = tf.get_variable("b_h", [output_size])
             w_out = tf.get_variable("w_o", [output_size, 2])
             b_out = tf.get_variable("b_o", [2])
-        rvars = [w_input, b_input, w_preb, b_h, w_out, b_out]
+
         input_data = tf.reshape(self.LSTM_outputs, [-1, LSTM_outputs_size])
         prev_data = tf.reshape(self._prediction, [-1, output_size])
         _h = tf.add(tf.matmul(input_data, w_input), tf.matmul(prev_data, w_preb))
@@ -263,10 +306,10 @@ class Model(object):
             tf.float32, shape=[], name="new_balance")
         self._balance_update = tf.assign(self._balance, self._new_balance)
 
-        self._global_step = global_step = tf.Variable(0, trainable=False)
+        self._global_step = tf.Variable(0, trainable=False)
         self._new_global_step = tf.placeholder(tf.int32, shape=[], name="new_global_step")
         self._gs_updata = tf.assign(self._global_step, self._new_global_step)
-           
+
         if not is_training:
            return
 

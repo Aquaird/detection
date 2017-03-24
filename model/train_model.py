@@ -38,7 +38,7 @@ def data_type():
 class Config(object):
     init_scale = 0.04
     max_grad_norm = 10
-    keep_prob = 0.4
+    keep_prob = 0.5
     momentum = 0.97
 
     learning_rate = 0.01
@@ -60,6 +60,9 @@ class Config(object):
     regular_balance = 0.001
     baseline = False
 
+    is_stacked = False
+    convolution = True
+
 def get_config():
     return Config()
 
@@ -74,7 +77,7 @@ def main(_):
     eval_config.batch_size = 1
     eval_config.num_steps = 4000
 
-    gpuconfig = tf.ConfigProto()
+    gpuconfig = tf.ConfigProto(log_device_placement=True)
     gpuconfig.gpu_options.allow_growth = True
 
     with tf.Graph().as_default():

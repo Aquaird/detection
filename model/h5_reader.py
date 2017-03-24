@@ -6,16 +6,14 @@ import threading
 import tensorflow as tf
 
 PATH = {
-    "data_path": "../pre/result/ICMEW/k_7.hdf5"
+    "data_path": "../pre/result/ICMEW/renew_10_train_vs_valid_all.hdf5"
 }
-
-CV_NUMBER = 7
 
 class DataQueue(object):
     '''
     Class to make CV_NUMBER data_queue
     '''
-    def __init__(self, data_path, n_steps, validation_index, enqueue_size=10, batch_size=3):
+    def __init__(self, data, n_step, enqueue_size=10, batch_size=3):
         '''
         Parameters:
             data_path: the hdf5 file
@@ -24,29 +22,10 @@ class DataQueue(object):
             batch_size: the batch_size to train the model
         '''
 
-        data_h5 = h5py.File(data_path, 'r')
         self.n_steps = n_steps
-        self.train_set = []
-        self.valid_set = []
-        self.queue_list = [None, None, None, None]
-        self.enqueue_list = [None, None, None, None]
-        self.batch_data_list = [None, None, None, None]
-        self.data = []
-
-        for i in data_h5:
-            if int(i) in validation_index:
-                self.valid_set.append(data_h5.get(i))
-            else:
-                self.train_set.append(data_h5.get(i))
-
-        # train_one queue
-        self.queue_list[0], self.enqueue_list[0], self.batch_data_list[0] = self.build_queue(228, 10, 2)
-        # valid_one queue
-        self.queue_list[1], self.enqueue_list[1], self.batch_data_list[1] = self.build_queue(228, 10, 1)
-        # train_two queue
-        self.queue_list[2], self.enqueue_list[2], self.batch_data_list[2] = self.build_queue(453, 10, 2)
-        # valid_two queue
-        self.queue_list[3], self.enqueue_list[3], self.batch_data_list[3] = self.build_queue(453, 10, 1)
+        self.data = data
+        self.batch_size = batch_size
+        self.enqueue_size = enqueue_size
 
     def build_queue(self, data_size, enqueue_size, batch_size):
         '''
@@ -76,7 +55,8 @@ class DataQueue(object):
 
         return queue, enqueue_op, batched_data
 
-    def enqueue(self, sess, queue, data_list):
+    def enqueue(self, sess):
         under = 0
         max_now = self.data_list[0].get("")
+        while 
 
