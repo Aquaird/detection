@@ -44,7 +44,7 @@ class Config(object):
     learning_rate = 0.01
     lr_decay = 0.96
 
-    batch_size = 1
+    batch_size = 2
     num_steps = 4000
     input_size = 75
     output_size = 11
@@ -55,12 +55,12 @@ class Config(object):
     max_c_epoch = 80
     decay_r_epoch = 60
     max_r_epoch = 120
-    max_balance = 15
+    max_balance = 10
 
-    regular_balance = 0.001
+    regular_balance = 0.0001
     baseline = False
 
-    is_stacked = True
+    is_stacked = False
     convolution = True
 
 def get_config():
@@ -81,10 +81,9 @@ def main(_):
     gpuconfig.gpu_options.allow_growth = True
 
     with tf.Graph().as_default():
-        initializer = tf.random_uniform_initializer(-config.init_scale, config.init_scale)
 
         with tf.name_scope("Train"):
-            with tf.variable_scope("Model", reuse=None, initializer=initializer):
+            with tf.variable_scope("Model", reuse=None):
                 m = Model(is_training=True, config=config)
             train_cost = tf.summary.scalar("Train classification Cost", m.cost)
             train_accuracy = tf.summary.scalar("Train Accuracy", m.accuracy)
@@ -97,7 +96,7 @@ def main(_):
             train_merged = tf.summary.merge([train_cost, train_regression_cost, train_accuracy, train_lr, train_bl, train_r_cost])
 
         with tf.name_scope("Valid"):
-            with tf.variable_scope("Model", reuse=True, initializer=initializer):
+            with tf.variable_scope("Model", reuse=True):
                 mvalid = Model(is_training=False, config=config)
             valid_cost = tf.summary.scalar("Valid Cost", mvalid.cost)
             valid_accuracy = tf.summary.scalar("Valid Accuracy", mvalid.accuracy)
@@ -105,7 +104,7 @@ def main(_):
             valid_merged = tf.summary.merge([valid_cost, valid_r_cost, valid_accuracy])
 
         with tf.name_scope("Test"):
-            with tf.variable_scope("Model", reuse=True, initializer=initializer):
+            with tf.variable_scope("Model", reuse=True):
                 mtest = Model(is_training=False, config=config)
             test_cost = tf.summary.scalar("Test Cost", mtest.cost)
             test_accuracy = tf.summary.scalar("Test Accuracy", mtest.accuracy)
@@ -148,6 +147,7 @@ def main(_):
                 if valid_accuracy > best_accuracy:
                     best_accuracy = valid_accuracy
                     print("Best Model: %d; Train Accuracy: %.5f; Valid Accuracy: %.5f; Test Accuracy: %.5f" % (i+1, train_accuracy, valid_accuracy, test_accuracy), file=logfile)
+                    logfile.flush()
                     sv.save(session, FLAGS.save_path+'/best_br_model.ckpt', global_step=i)
 
             sv.save(session, FLAGS.save_path+'/br_model.ckpt', global_step=config.max_c_epoch)
@@ -173,6 +173,7 @@ def main(_):
                 if valid_f1 > best_f1:
                     best_f1 = valid_f1
                     print("Best Model: %d; Train f1: %.5f; Valid f1: %.5f; Test f1: %.5f" % (i+1+config.max_c_epoch, train_f1, valid_f1, test_f1), file=logfile)
+                    logfile.flush()
                     sv.save(session, FLAGS.save_path+'/best_ar_model.ckpt', global_step=i+config.max_c_epoch)
 
                 if valid_accuracy > best_accuracy:
