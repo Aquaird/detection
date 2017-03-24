@@ -44,7 +44,7 @@ class Config(object):
     learning_rate = 0.01
     lr_decay = 0.96
 
-    batch_size = 2
+    batch_size = 3
     num_steps = 4000
     input_size = 75
     output_size = 11
@@ -52,7 +52,7 @@ class Config(object):
     num_layers = 3
 
     #decay_c_epoch = 40
-    max_c_epoch = 80
+    max_c_epoch = 120
     decay_r_epoch = 60
     max_r_epoch = 120
     max_balance = 10
@@ -152,6 +152,7 @@ def main(_):
 
             sv.save(session, FLAGS.save_path+'/br_model.ckpt', global_step=config.max_c_epoch)
 
+            best_f1 = 0.0
             for i in range(config.max_r_epoch):
                 lr_decay = config.lr_decay ** max(i + 1 - config.decay_r_epoch, 0.0)
                 m.assign_lr(session, config.learning_rate * lr_decay)
@@ -159,7 +160,6 @@ def main(_):
                 balance_new = (config.max_balance / config.max_r_epoch) * i + 1
                 m.assign_balance(session, balance_new)
 
-                best_f1 = 0.0
 
                 print("Epoch: %d Learning rate: %.3f" % (i+1, session.run(m.lr)))
                 print("Epoch: %d Learning Balance: %.3f" % (i+1, session.run(m.bl)))
@@ -173,6 +173,7 @@ def main(_):
                 if valid_f1 > best_f1:
                     best_f1 = valid_f1
                     print("Best Model: %d; Train f1: %.5f; Valid f1: %.5f; Test f1: %.5f" % (i+1+config.max_c_epoch, train_f1, valid_f1, test_f1), file=logfile)
+                    print("@ this Model: Train Accuracy: %.5f; Valid Accuracy: %.5f; Test Accuracy: %.5f" % (train_accuracy, valid_accuracy, test_accuracy), file=logfile)
                     logfile.flush()
                     sv.save(session, FLAGS.save_path+'/best_ar_model.ckpt', global_step=i+config.max_c_epoch)
 
