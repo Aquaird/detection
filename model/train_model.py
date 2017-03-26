@@ -44,7 +44,7 @@ class Config(object):
     learning_rate = 0.01
     lr_decay = 0.96
 
-    batch_size = 1
+    batch_size = 3
     num_steps = 4000
     input_size = 75
     output_size = 11
@@ -52,12 +52,12 @@ class Config(object):
     num_layers = 3
 
     #decay_c_epoch = 40
-    max_c_epoch = 80
+    max_c_epoch = 120
     decay_r_epoch = 60
     max_r_epoch = 120
-    max_balance = 15
+    max_balance = 10
 
-    regular_balance = 0.001
+    regular_balance = 0.0001
     baseline = False
 
     is_stacked = False
@@ -81,10 +81,9 @@ def main(_):
     gpuconfig.gpu_options.allow_growth = True
 
     with tf.Graph().as_default():
-        initializer = tf.random_uniform_initializer(-config.init_scale, config.init_scale)
 
         with tf.name_scope("Train"):
-            with tf.variable_scope("Model", reuse=None, initializer=initializer):
+            with tf.variable_scope("Model", reuse=None):
                 m = Model(is_training=True, config=config)
             train_cost = tf.summary.scalar("Train classification Cost", m.cost)
             train_accuracy = tf.summary.scalar("Train Accuracy", m.accuracy)
@@ -97,7 +96,7 @@ def main(_):
             train_merged = tf.summary.merge([train_cost, train_regression_cost, train_accuracy, train_lr, train_bl, train_r_cost])
 
         with tf.name_scope("Valid"):
-            with tf.variable_scope("Model", reuse=True, initializer=initializer):
+            with tf.variable_scope("Model", reuse=True):
                 mvalid = Model(is_training=False, config=config)
             valid_cost = tf.summary.scalar("Valid Cost", mvalid.cost)
             valid_accuracy = tf.summary.scalar("Valid Accuracy", mvalid.accuracy)
@@ -105,7 +104,7 @@ def main(_):
             valid_merged = tf.summary.merge([valid_cost, valid_r_cost, valid_accuracy])
 
         with tf.name_scope("Test"):
-            with tf.variable_scope("Model", reuse=True, initializer=initializer):
+            with tf.variable_scope("Model", reuse=True):
                 mtest = Model(is_training=False, config=config)
             test_cost = tf.summary.scalar("Test Cost", mtest.cost)
             test_accuracy = tf.summary.scalar("Test Accuracy", mtest.accuracy)
@@ -126,43 +125,62 @@ def main(_):
         sv = tf.train.Saver(max_to_keep=0, write_version=2)
         writer = tf.summary.FileWriter(logdir=FLAGS.save_path, graph=tf.get_default_graph())
 
+        logfile = open(FLAGS.save_path+'/best_log.txt', 'w+')
+        best_accuracy = 0.0
         with tf.Session(config=gpuconfig) as session:
             init = tf.global_variables_initializer().run()
             # sv.restore(session, "../save/result_222/br_model.ckpt-1")
+
             for i in range(config.max_c_epoch):
                 #lr_decay = config.lr_decay ** max(i + 1 - config.decay_c_epoch, 0.0)
                 lr_decay = 1.0
                 m.assign_lr(session, config.learning_rate * lr_decay)
 
                 print("Epoch: %d Learning rate: %.3f" % (i+1, session.run(m.lr)))
-                train_perplexity = run_epoch(session, writer, m, regression=False, data_padding=train_padding, eval_op=m.train_op, sm_op=train_merged, verbose=True)
+                train_perplexity, train_accuracy = run_epoch(session, writer, m, regression=False, data_padding=train_padding, eval_op=m.train_op, sm_op=train_merged)
                 print("Epoch: %d Train Perplexity: %.3f" % (i + 1, train_perplexity))
-                valid_perplexity = run_epoch(session, writer, mvalid, regression=False, data_padding=valid_padding, sm_op=valid_merged)
+                valid_perplexity, valid_accuracy = run_epoch(session, writer, mvalid, regression=False, data_padding=valid_padding, sm_op=valid_merged)
                 print("Epoch: %d Valid Perplexity: %.3f" % (i + 1, valid_perplexity))
-                test_perplexity = run_epoch(session, writer, mtest, regression=False, data_padding=test_padding, sm_op=test_merged)
+                test_perplexity, test_accuracy = run_epoch(session, writer, mtest, regression=False, data_padding=test_padding, sm_op=test_merged)
                 print("Test Perplexity: %.3f" % test_perplexity)
+
+                if valid_accuracy > best_accuracy:
+                    best_accuracy = valid_accuracy
+                    print("Best Model: %d; Train Accuracy: %.5f; Valid Accuracy: %.5f; Test Accuracy: %.5f" % (i+1, train_accuracy, valid_accuracy, test_accuracy), file=logfile)
+                    logfile.flush()
+                    sv.save(session, FLAGS.save_path+'/best_br_model.ckpt', global_step=i)
 
             sv.save(session, FLAGS.save_path+'/br_model.ckpt', global_step=config.max_c_epoch)
 
+            best_f1 = 0.0
             for i in range(config.max_r_epoch):
                 lr_decay = config.lr_decay ** max(i + 1 - config.decay_r_epoch, 0.0)
                 m.assign_lr(session, config.learning_rate * lr_decay)
 
                 balance_new = (config.max_balance / config.max_r_epoch) * i + 1
-                print(balance_new)
                 m.assign_balance(session, balance_new)
+
 
                 print("Epoch: %d Learning rate: %.3f" % (i+1, session.run(m.lr)))
                 print("Epoch: %d Learning Balance: %.3f" % (i+1, session.run(m.bl)))
-                train_perplexity = run_epoch(session, writer, m, regression=True, data_padding=train_padding, eval_op=m.train_with_regression_op, verbose=True, sm_op=train_merged)
+                train_perplexity, train_accuracy, train_f1 = run_epoch(session, writer, m, regression=True, data_padding=train_padding, eval_op=m.train_with_regression_op, sm_op=train_merged)
                 print("Epoch: %d Train Perplexity: %.3f" % (i + 1, train_perplexity))
-                valid_perplexity = run_epoch(session, writer, mvalid, regression=True, data_padding=valid_padding, sm_op=valid_merged)
+                valid_perplexity, valid_accuracy, valid_f1 = run_epoch(session, writer, mvalid, regression=True, data_padding=valid_padding, sm_op=valid_merged)
                 print("Epoch: %d Valid Perplexity: %.3f" % (i + 1, valid_perplexity))
-
-                test_perplexity = run_epoch(session, writer, mtest, regression=True, data_padding=test_padding, sm_op=test_merged)
+                test_perplexity, test_accuracy, test_f1 = run_epoch(session, writer, mtest, regression=True, data_padding=test_padding, sm_op=test_merged)
                 print("Test Perplexity: %.3f" % test_perplexity)
 
-                sv.save(session, FLAGS.save_path+'/ar_model.ckpt', global_step=i+config.max_c_epoch)
+                if valid_f1 > best_f1:
+                    best_f1 = valid_f1
+                    print("Best Model: %d; Train f1: %.5f; Valid f1: %.5f; Test f1: %.5f" % (i+1+config.max_c_epoch, train_f1, valid_f1, test_f1), file=logfile)
+                    print("@ this Model: Train Accuracy: %.5f; Valid Accuracy: %.5f; Test Accuracy: %.5f" % (train_accuracy, valid_accuracy, test_accuracy), file=logfile)
+                    logfile.flush()
+                    sv.save(session, FLAGS.save_path+'/best_ar_model.ckpt', global_step=i+config.max_c_epoch)
+
+                if valid_accuracy > best_accuracy:
+                    best_accuracy = valid_accuracy
+                    print("Best Model: %d; Train Accuracy: %.5f; Valid Accuracy: %.5f; Test Accuracy: %.5f" % (i+1+config.max_c_epoch, train_accuracy, valid_accuracy, test_accuracy), file=logfile)
+                    sv.save(session, FLAGS.save_path+'/best_ar_model.ckpt', global_step=i+config.max_c_epoch)
 
 
                 if FLAGS.save_path:

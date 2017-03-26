@@ -559,10 +559,6 @@ def run_epoch(session, writer, model, data_padding, regression=False, eval_op=No
         if eval_op == None:
             model.assign_global_step(session, vals["global_step"]+1)
 
-
-    print("accuracy mean:")
-    print(np.mean(accuracy_mean))
-    #print(f1_sets_epoch)
     if(regression):
         f1_scores_epoch = []
         for i in range(0,11):
@@ -579,8 +575,6 @@ def run_epoch(session, writer, model, data_padding, regression=False, eval_op=No
             else:
                 f1_scores_epoch.append( 2*p*r / (p+r) )
 
-        print("f1 scores epoch:")
-        print(f1_scores_epoch)
-        return np.exp(regression_costs / iters)
+        return np.exp(regression_costs / iters), np.mean(accuracy_mean), np.mean(f1_scores_epoch[1:])
     else:
-        return np.exp(costs / iters)
+        return np.exp(costs / iters), np.mean(accuracy_mean)
