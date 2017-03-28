@@ -68,8 +68,8 @@ class data_queue(object):
                 self.queue_target_data : curr_target,
                 self.queue_length_data: curr_length
             })
-
-            print("enqueue time: %d" (time.time() - enqueue_start_time))
+            enqueue_time = time.time() - enqueue_start_time
+            #print("enqueue time: %s" % enqueue_time)
 
             #print("added to the queue")
         #print("finished enqueueing")
@@ -82,34 +82,34 @@ def raw_data(data_type, person_number):
     length_data = data_all.get(person_number+'_length')
     return feature_data, length_data
 
-features, lengths = raw_data('train', 'one')
-print(features.shape)
-print(lengths.shape)
+#features, lengths = raw_data('valid', 'one')
+#print(features.shape)
+#print(lengths.shape)
 
-dq = data_queue([features, lengths], 3 , 100)
-gpuconfig = tf.ConfigProto()
-gpuconfig.gpu_options.allow_growth = True
-sess = tf.Session(config = gpuconfig)
+#dq = data_queue([features, lengths], 5 , 100)
+#gpuconfig = tf.ConfigProto()
+#gpuconfig.gpu_options.allow_growth = True
+#sess = tf.Session(config = gpuconfig)
 
-coord_enqueue = tf.train.Coordinator()
-enqueue_threads = threading.Thread(target=dq.enqueue, args=[sess, coord_enqueue])
-enqueue_threads.start()
+#coord_enqueue = tf.train.Coordinator()
+#enqueue_threads = threading.Thread(target=dq.enqueue, args=[sess, coord_enqueue])
+#enqueue_threads.start()
 
-coord_dequeue = tf.train.Coordinator()
-dequeue_threads = tf.train.start_queue_runners(coord=coord_dequeue, sess=sess)
+#coord_dequeue = tf.train.Coordinator()
+#dequeue_threads = tf.train.start_queue_runners(coord=coord_dequeue, sess=sess)
 
-for i in range(int(5*features.len() /3)):
-    curr_feature_batch, curr_target_batch, curr_length_batch = sess.run([ dq.feature_batch, dq.target_batch, dq.length_batch])
-    print("batch: "+str(i))
+#for i in range(int(5*features.len() /3)):
+#    curr_feature_batch, curr_target_batch, curr_length_batch = sess.run([ dq.feature_batch, d#q.target_batch, dq.length_batch])
+#    print("batch: "+str(i))
 
-coord_enqueue.request_stop()
-coord_enqueue.join([enqueue_threads])
-sess.run(dq.queue.close(cancel_pending_enqueues=True))
+#coord_enqueue.request_stop()
+#coord_enqueue.join([enqueue_threads])
+#sess.run(dq.queue.close(cancel_pending_enqueues=True))
 
-coord_dequeue.request_stop()
-coord_dequeue.join(dequeue_threads)
+#coord_dequeue.request_stop()
+#coord_dequeue.join(dequeue_threads)
 
-sess.close()
+#sess.close()
 
-del(dq)
+#del(dq)
 

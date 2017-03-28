@@ -1,13 +1,12 @@
 import numpy as np
 
-def f1(c_pred, r_pred, labels, frame_index, length):
+def f1(c_pred, r_pred, labels, length):
 
     threshold = 0.5
 
     c_pred = c_pred[0:length]
     r_pred = r_pred[0:length]
     labels = labels[0:length]
-    frame_index = frame_index[0:length]
 
     label = 0
     ps = []
@@ -101,3 +100,21 @@ def alpha(s,e,ts,te):
     else:
         sorted_list = sorted([s,e,ts,te])
         return (sorted_list[2] - sorted_list[1] +1)/(sorted_list[3] - sorted_list[0] +1)
+
+def calculate_f1(f1_sets):
+    f1_scores = []
+    for i in range(f1_sets.shape[0]):
+        if(f1_sets[i][1]+f1_sets[i][0] == 0):
+            p = 0
+        else:
+            p = f1_sets[i][0] / (f1_sets[i][1]+f1_sets[i][0])
+        if(f1_sets[i][2]+f1_sets[i][0] == 0):
+            r = 0
+        else:
+            r = f1_sets[i][0] / (f1_sets[i][2]+f1_sets[i][0])
+        if(p+r == 0):
+            f1_scores.append(0.0)
+        else:
+            f1_scores.append( 2*p*r / (p+r) )
+
+    return f1_scores
