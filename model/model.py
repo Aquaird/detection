@@ -150,19 +150,19 @@ class RegressionLayer(object):
                                       [input_size, prev_size],
                                       initializer=tf.constant_initializer(init_value))
 
-            init_value = np.random.randn(prev_size, prev_size) / np.sqrt(prev_size/2)
+            init_value = np.random.randn(prev_size, prev_size) / np.sqrt(prev_size)
             w_preb = tf.get_variable("w_p", [prev_size, prev_size], initializer=tf.constant_initializer(init_value))
             b_h = tf.get_variable("b_h", [prev_size])
 
             input_data = tf.reshape(input_data, [-1, input_size])
             prev_data = tf.reshape(prev_data, [-1, prev_size])
             _h = tf.add(tf.matmul(input_data, w_input), tf.matmul(prev_data, w_preb))
-            _h = tf.nn.relu(tf.add(_h, b_h))
+            _h = tf.nn.sigmoid(tf.add(_h, b_h))
 
             init_value = np.random.randn(prev_size, 2) / np.sqrt(prev_size)
             w_out = tf.get_variable("w_o", [prev_size, 2], initializer=tf.constant_initializer(init_value))
             b_out = tf.get_variable("b_o", [2], initializer=tf.constant_initializer(np.zeros(2)))
-            self._o = tf.nn.relu(tf.add(tf.matmul(_h, w_out), b_out))
+            self._o = tf.nn.sigmoid(tf.add(tf.matmul(_h, w_out), b_out))
             self._o = tf.reshape(self._o, [batch_size, -1, 2])
 
             w_cost = tf.reduce_sum(w_input * w_input)
@@ -278,6 +278,8 @@ class Model(object):
         self._targets = inputs.target
         self._lengths = tf.reshape(inputs.length, [-1])
 
+        self._batch_size = config.batch_size
+
         sm,t1,t2 = tf.split(self._inputs,3,2)
 
         input_0 = sm
@@ -361,7 +363,7 @@ class Model(object):
         optimizer = tf.train.MomentumOptimizer(self._lr, config.momentum)
 
         grads_and_vars = optimizer.compute_gradients(self._cost, tvars)
-        grads = self.add_noise_to_gradients(grads_and_vars, 0.0001)
+        grads = self.add_noise_to_gradients(grads_and_vars, 0.0005)
         grads, _ = tf.clip_by_global_norm(grads, config.max_grad_norm)
 
         grads_regression_and_vars = optimizer.compute_gradients(self._cost_regression, tvars)
@@ -478,6 +480,14 @@ class Model(object):
     def train_with_regression_op(self):
         return self._train_with_regression_op
 
+    @property
+    def output_size(self):
+        return self._output_size
+
+    @property
+    def batch_size(self):
+        return self._batch_size
+
 
 def run_epoch(session, writer, model, eval_op=None, sm_op=None, verbose=False):
     """run the model on the given data.
@@ -585,7 +595,9 @@ def run_epoch_regression(session, writer, model, eval_op=None, sm_op=None, verbo
 
         f1_sets = np.zeros([model.output_size, 3])
         for i in range(0, model.batch_size):
-            batch_sets = test.f1(np.argmax(c_pred[i], axis=1), r_pred[i], np.argmax(targets[i],axis=1), lengths[i])
+            label_pred = np.argmax(c_pred[i], axis=1)
+            regression_pred = r_pred[i]
+            batch_sets = test.f1(label_pred, regression_pred, np.argmax(targets[i],axis=1), lengths[i])
             f1_sets = f1_sets + batch_sets
             f1_sets_epoch = f1_sets_epoch + batch_sets
         f1_scores = test.calculate_f1(f1_sets)

@@ -68,7 +68,7 @@ def f1(c_pred, r_pred, labels, length):
 
     f1_set = []
     catch_list = []
-    for i in range(0,11):
+    for i in range(0,52):
         f1_set.append([0,0,0])
 
     for i in mps:
@@ -87,10 +87,9 @@ def f1(c_pred, r_pred, labels, length):
     for i in catch_list:
         ps.remove(i)
 
-    print(ps)
     for i in ps:
         f1_set[i[2]][2] += 1
-    print(f1_set)
+    #print(f1_set)
     print("===========================================")
     return np.array(f1_set)
 

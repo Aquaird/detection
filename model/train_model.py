@@ -56,16 +56,16 @@ flags.DEFINE_integer(
     "filter_size", 3, "the filter_size of the convolution layer"
 )
 flags.DEFINE_float(
-    "learning_rate", 0.001, "init learning rate."
+    "learning_rate", 0.01, "init learning rate."
 )
 flags.DEFINE_float(
     "lr_decay", 0.98, "the learning rate decay."
 )
 flags.DEFINE_float(
-    "keep_prob", 20, "the rate of keep prob in dropout"
+    "keep_prob", 0.6, "the rate of keep prob in dropout"
 )
 flags.DEFINE_float(
-    "momentum", 0.96, 'the strength in momentum'
+    "momentum", 0.97, 'the strength in momentum'
 )
 FLAGS = flags.FLAGS
 
@@ -73,8 +73,8 @@ def data_type():
     return tf.float16 if FLAGS.use_fp16 else tf.float32
 
 class Config(object):
-    init_scale = 0.04
-    max_grad_norm = 10
+    init_scale = 0.1
+    max_grad_norm = 100
     keep_prob = FLAGS.keep_prob
     momentum = FLAGS.momentum
 
@@ -164,8 +164,7 @@ def main(_):
 
             best_accuracy = 0.0
             for i in range(config.max_c_epoch):
-                #lr_decay = config.lr_decay ** max(i + 1 - config.decay_c_epoch, 0.0)
-                lr_decay = 1.0
+                lr_decay = config.lr_decay ** max(i + 1 - config.decay_r_epoch, 0.0)
                 m.assign_lr(session, config.learning_rate * lr_decay)
 
                 print("Epoch: %d Learning rate: %.3f" % (i+1, session.run(m.lr)))
@@ -184,7 +183,7 @@ def main(_):
 
             best_f1 = 0.0
             for i in range(config.max_r_epoch):
-                lr_decay = config.lr_decay ** max(i + 1 - config.decay_r_epoch, 0.0)
+                lr_decay = config.lr_decay ** max(i+ config.max_c_epoch + 1 - config.decay_r_epoch, 0.0)
                 m.assign_lr(session, config.learning_rate * lr_decay)
 
                 balance_new = (config.max_balance / config.max_r_epoch) * i + 1
@@ -215,7 +214,6 @@ def main(_):
                     print("Saving model to %s." % FLAGS.save_path)
 
             train_coord_enqueue.request_stop()
-            train_coord_enqueue.join([train_enqueue_threads])
             session.run(train_input.data_q.queue.close(cancel_pending_enqueues=True))
 
             valid_coord_enqueue.request_stop()
