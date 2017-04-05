@@ -50,7 +50,7 @@ class FullConnectedLayer(object):
         '''
         print(tf.get_variable_scope().name)
         print(input_data.get_shape())
-        batch_size = int(input_data.get_shape()[0])
+        sequence_size = int(input_data.get_shape()[1])
         print(name+": inputs shape:")
         print(input_data.get_shape())
         input_size = int(input_data.get_shape()[-1])
@@ -60,7 +60,7 @@ class FullConnectedLayer(object):
 
         input_data = tf.reshape(input_data, [-1, input_size])
         self._out = tf.nn.relu(tf.add(tf.matmul(input_data, w_fc), b_fc))
-        self._out = tf.reshape(self._out, [batch_size, -1, output_size])
+        self._out = tf.reshape(self._out, [-1,  output_size])
         self._w_loss = tf.reduce_sum(w_fc * w_fc)
         print(name+": outputs shape:")
         print(self._out.get_shape())
@@ -161,12 +161,12 @@ class Model(object):
         # input.targets: batch_size  * 2 of snippet-wised label
         self._inputs = inputs.feature
         self._targets = tf.reshape(inputs.target, [-1, 2])
+        self.run_snippets = tf.placeholder(tf.float32, [100, config.snippet_size, config.input_size], name='batch_snippets')
 
-
-        self._batch_size = config.batch_size
+        self._batch_size = int(self._inputs.get_shape()[0])
         size = config.hidden_size
         self._input_object = inputs
-        self._output_size = output_size = self._targets.get_shape()[-1]
+        self._output_size = output_size =int(self._targets.get_shape()[-1])
         self.segment_number = config.segment_number
         self.snippet_size = config.snippet_size
         self.input_size = int(self._inputs.get_shape()[-1])
@@ -174,40 +174,26 @@ class Model(object):
 
         # input_list: [segment_number, batch_size, snippet_size, input_size]
         input_list = tf.split(self._inputs, self.segment_number, axis=1)
-        # out_list: [segment_number, batch_size, 1]
+        # out_list: [segment_number, batch_size, 2]
         out_list = []
 
+        init_value = np.random.randn(self.segment_number)
+        w = tf.get_variable('weighted_w', [self.segment_number], dtype=data_type(), initializer=tf.random_uniform_initializer(0.0, 1.0, dtype=tf.float32))
         with tf.variable_scope("mulit-tower"):
             for i in range(self.segment_number):
                 with tf.device('/gpu:%d' % (i%config.GPU_number)):
                     with tf.name_scope('%s_%d' % ("Snippets", i)):
-                        input_list[i] = tf.reshape(input_list[i], [self._batch_size, self.snippet_size, -1])
-                        conv1_layer = ConvolutionalLayer(input_list[i], config.filter_size, 'conv1')
-                        input_1 = conv1_layer.out
-                        conv2_layer = ConvolutionalLayer(input_1, config.filter_size, 'conv2')
-                        input_2 = conv2_layer.out
-
-                        lstm_input = tf.concat([input_list[i], input_1, input_2], axis=2)
-                        bi_lstm_layer_1 = BiRNN(is_training, config.keep_prob, lstm_input, name='biLSTM_1')
-                        lstm_1_outs = bi_lstm_layer_1.outs
-                        # lstm_output: [batch_size, input_size]
-                        bi_lstm_layer_2 = BiRNN(is_training, config.keep_prob, lstm_1_outs, name='biLSTM2')
-                        lstm_output = bi_lstm_layer_2.out
-                        fc_layer = FullConnectedLayer(1, lstm_output, name='fc')
+                        input_list[i] = tf.reshape(input_list[i], [-1, self.snippet_size, self.input_size])
                         # fc_out: [batch_size, i]
-                        fc_out = fc_layer.out
+                        fc_out = self.build_snippet_netwrok(config, is_training, output_size, input_list[i])
                         out_list.append(fc_out)
-                        tf.get_variable_scope().reuse_variables()
 
-        init_value = np.random.randn(self.segment_number, output_size) / np.sqrt(self.segment_number)
-        w = tf.get_variable('final_w', [self.segment_number, output_size], dtype=data_type(), initializer=tf.constant_initializer(init_value))
-        b = tf.get_variable('final_b', [output_size], dtype=data_type(), initializer=tf.constant_initializer(0.0))
-        # final_input: [batch_size, segment_number]
-        print(self._targets.get_shape())
-        final_input = tf.reshape(tf.concat(out_list, axis=1), [-1, self.segment_number])
-        print(final_input.get_shape())
+
         # self._out: [batch_size, 2]
-        self._out = tf.nn.softmax(tf.matmul(final_input, w) + b)
+        print(self._targets.get_shape())
+        self._out = tf.reduce_mean(out_list , axis=0)
+        print(self._out.get_shape())
+        # self._out: [batch_size, 2]
         self._cost, self._accuracy = cost_and_accuracy(self._out, self._targets)
 
         self._global_step = tf.Variable(0, trainable=False)
@@ -224,7 +210,7 @@ class Model(object):
         optimizer = tf.train.MomentumOptimizer(self._lr, config.momentum)
 
         grads_and_vars = optimizer.compute_gradients(self._cost, tvars)
-        grads = self.add_noise_to_gradients(grads_and_vars, 0.0001)
+        grads = self.add_noise_to_gradients(grads_and_vars, 0.00001)
         grads, _ = tf.clip_by_global_norm(grads, config.max_grad_norm)
 
         self._train_op = optimizer.apply_gradients(
@@ -234,6 +220,35 @@ class Model(object):
         self._new_lr = tf.placeholder(
             tf.float32, shape=[], name="new_learning_rate")
         self._lr_update = tf.assign(self._lr, self._new_lr)
+
+
+    def build_snippet_netwrok(self, config, is_training, output_size, input_snippet):
+        conv1_layer = ConvolutionalLayer(input_snippet, config.filter_size, 'conv1')
+        input_1 = conv1_layer.out
+        conv2_layer = ConvolutionalLayer(input_1, config.filter_size, 'conv2')
+        input_2 = conv2_layer.out
+
+        lstm_input = tf.concat([input_snippet, input_1, input_2], axis=2)
+        bi_lstm_layer_1 = BiRNN(is_training, config.keep_prob, lstm_input, name='biLSTM_1')
+        lstm_1_outs = bi_lstm_layer_1.outs
+        # lstm_output: [batch_size, input_size]
+        bi_lstm_layer_2 = BiRNN(is_training, config.keep_prob, lstm_1_outs, name='biLSTM2')
+        lstm_output = bi_lstm_layer_2.out
+        fc_size = int(lstm_output.get_shape()[-1])
+        fc_layer = FullConnectedLayer(fc_size, lstm_output, name='fc')
+        # fc_out: [batch_size, i]
+        fc_out = fc_layer.out
+        init_value = np.random.randn(fc_size, output_size) / np.sqrt(self.segment_number)
+        w = tf.get_variable('softmax_w', [fc_size, output_size], dtype=data_type(), initializer=tf.constant_initializer(init_value))
+        b = tf.get_variable('softmax_b', [output_size], dtype=data_type(), initializer=tf.constant_initializer(0.0))
+        # self._out: [batch_size, 2]
+        final_out = tf.nn.softmax(tf.matmul(fc_out, w) + b)
+
+        tf.get_variable_scope().reuse_variables()
+        return final_out
+
+    def run_batch_snippets(self, config, is_training):
+        return self.build_snippet_netwrok(config, is_training, config.output_size, self.run_snippets)
 
     def assign_lr(self, session, lr_value):
         session.run(self._lr_update, feed_dict={self._new_lr: lr_value})
@@ -351,7 +366,10 @@ def run_epoch(session, writer, model, eval_op=None, sm_op=None, verbose=False):
                 precise = tt_count / (tt_count+tf_count)
             else:
                 precise = 0
-            recall = tt_count / (tt_count + ft_count)
+            if(tt_count+ft_count)!=0:
+                recall = tt_count / (tt_count + ft_count)
+            else:
+                recall = 0
             accuracy[i] = [precise, recall]
             accuracy_epoch.append(accuracy)
 
@@ -372,4 +390,55 @@ def run_epoch(session, writer, model, eval_op=None, sm_op=None, verbose=False):
             model.assign_global_step(session, vals["global_step"]+1)
 
     return costs / iters, np.mean(accuracy_epoch, axis=0)
+
+def make_actioness_seq(model, session, input_seq, length):
+    """
+    run the model on the given seq.
+    print actioness seq to h5_file
+    Parameter:
+        model: the model being calculated
+        session: session to run model
+    """
+
+    fetches = {
+        "predictions": model.prediction[:, 1]
+    }
+    snippet_size = model.snippet_size
+    snippets = []
+    end = snippet_size
+    while end < length:
+        snippet = input_seq[end-snippet_size:end]
+        #print(snippet.shape)
+        snippets.append(
+            np.reshape(snippet, [1, snippet_size, 150])
+            )
+        end += snippet_size
+
+    snippets = np.array(snippets)
+    result = []
+
+    print(snippets.shape)
+    under = 0
+    batch_size = 100
+    max_out = snippets.shape[0]
+    while under < max_out:
+        upper = under + batch_size
+        if upper <= max_out:
+            feed_dict = {
+                model.run_snippets: np.reshape(snippets[under:upper], [batch_size, snippet_size, -1])
+            }
+        else:
+            rest = upper - max_out
+            feed_dict = {
+                model.run_snippets: np.reshape(np.concatenate([snippets[under:max_out], snippets[0:rest]]), [batch_size, snippet_size, -1])
+            }
+        under += batch_size
+        vals = session.run(fetches, feed_dict)
+        result.append(np.reshape(vals["predictions"], [-1]))
+
+    result = np.reshape(np.array(result), [-1])
+    result = result[:length]
+    print(result.shape)
+    return result
+
 

@@ -53,60 +53,7 @@ def insert_data(hdata, append_data):
     hdata.resize(hdata.shape[0]+1, axis=0)
     hdata[-1:] = append_data
 
-def make_snippets(seq, segment_number, snippet_size):
-    length = len(seq)
-    if length >= segment_number*snippet_size:
-        snippets = sample(seq, segment_number, snippet_size)
-    else:
-        snippets = convolution(seq, segment_number, snippet_size)
-
-    return snippets
-
-def sample(seq, segment_number, snippet_size):
-    segment_length = len(seq) // (segment_number)
-    remains = len(seq) % segment_number
-
-    divide = []
-    for i in range(0, segment_number):
-        divide.append(segment_length*(i+1))
-    divide = np.array(divide)
-    for i in range(0, remains):
-        append_segment = random.randint(0, segment_number-1)
-        divide[append_segment:] += 1
-
-    snippets = []
-    for i in range(segment_number):
-        if i == 0:
-            start = 0
-        else:
-            start = divide[i-1]
-        end = divide[i]
-
-        snippets_start = random.randint(start, end-snippet_size)
-        snippets.append(seq[snippets_start:snippets_start+snippet_size])
-
-    return np.array(snippets)
-
-def convolution(seq, segment_number, snippet_size):
-    move = len(seq) - snippet_size
-    step = move // (segment_number-1)
-    remains = move % (segment_number-1)
-
-    divide = []
-    for i in range(0, segment_number):
-        divide.append(step*i)
-    divide = np.array(divide)
-    for i in range(0, remains):
-        append_step = random.randint(1, segment_number)
-        divide[append_step:] += 1
-
-    snippets = []
-    for i in range(segment_number):
-        snippets.append(seq[divide[i]:divide[i]+snippet_size])
-
-    return np.array(snippets)
-
-def make_feature(action_path, label_path, hgroup, trp_group, segment_number, snippet_size, n_steps=NUMBER_STEPS):
+def make_feature(action_path, label_path, hgroup, trp_group, n_steps=NUMBER_STEPS):
     '''
     get feature by path and write it into hdf5_data file
     Parameters:
@@ -144,7 +91,7 @@ def make_feature(action_path, label_path, hgroup, trp_group, segment_number, sni
             if(trp_length[i]<15) or (trp_length[i]>280):
                 continue
             else:
-                insert_data(htrp_data, make_snippets(element[:, :75], segment_number, snippet_size))
+                insert_data(htrp_data, padding(element[:, :75], REGION_STEPS, np.float32))
                 insert_data(htrp_label, trp_label[i])
                 insert_data(htrp_length, trp_length[i])
 
@@ -160,7 +107,7 @@ def make_feature(action_path, label_path, hgroup, trp_group, segment_number, sni
             if(trp_length[i]<15) or (trp_length[i]>280):
                 continue
             else:
-                insert_data(htrp_data, make_snippets(element, segment_number, snippet_size))
+                insert_data(htrp_data, padding(element, REGION_STEPS, np.float32))
                 insert_data(htrp_label, trp_label[i])
                 insert_data(htrp_length, trp_length[i])
 
@@ -189,7 +136,7 @@ def make_feature(action_path, label_path, hgroup, trp_group, segment_number, sni
         if(trp_length[i]<15) or (trp_length[i]>250):
             continue
         else:
-            insert_data(all_htrp_data, make_snippets(element, segment_number, snippet_size))
+            insert_data(all_htrp_data, padding(element, REGION_STEPS, np.float32))
             insert_data(all_htrp_label, trp_label[i])
             insert_data(all_htrp_length, trp_length[i])
 
@@ -211,7 +158,7 @@ def padding(sequence, n_steps, data_type):
     return new
 
 
-def create_snippet_h5(feature_root, feature_name, snippet_size, segment_number):
+def create_region_h5(feature_root, feature_name):
     h5_writer = h5py.File(os.path.join(feature_root, feature_name), "w")
 
     train_group = h5_writer.require_group("train")
@@ -246,44 +193,44 @@ def create_snippet_h5(feature_root, feature_name, snippet_size, segment_number):
                                dtype='int32')
 
     train_group.create_dataset('all_data',
-                               shape=(0, segment_number, snippet_size, two_size),
-                               maxshape=(None, segment_number, snippet_size, two_size), dtype='float32')
+                               shape=(0, REGION_STEPS, two_size),
+                               maxshape=(None, REGION_STEPS, two_size), dtype='float32')
     train_group.create_dataset('all_length',
                                shape=(0, 1),
                                maxshape=(None, 1),
                                dtype='int32')
     train_group.create_dataset('one_data',
-                               shape=(0, segment_number, snippet_size, one_size),
-                               maxshape=(None, segment_number, snippet_size, one_size), dtype='float32')
+                               shape=(0, REGION_STEPS, one_size),
+                               maxshape=(None, REGION_STEPS, one_size), dtype='float32')
     train_group.create_dataset('one_length',
                                shape=(0, 1),
                                maxshape=(None, 1),
                                dtype='int32')
     train_group.create_dataset('two_data',
-                               shape=(0, segment_number, snippet_size, two_size),
-                               maxshape=(None, segment_number, snippet_size, two_size), dtype='float32')
+                               shape=(0, REGION_STEPS, two_size),
+                               maxshape=(None, REGION_STEPS, two_size), dtype='float32')
     train_group.create_dataset('two_length',
                                shape=(0, 1),
                                maxshape=(None, 1),
                                dtype='int32')
 
     valid_group.create_dataset('all_data',
-                               shape=(0, segment_number, snippet_size, two_size),
-                               maxshape=(None, segment_number, snippet_size, two_size), dtype='float32')
+                               shape=(0, REGION_STEPS, two_size),
+                               maxshape=(None, REGION_STEPS, two_size), dtype='float32')
     valid_group.create_dataset('all_length',
                                shape=(0, 1),
                                maxshape=(None, 1),
                                dtype='int32')
     valid_group.create_dataset('one_data',
-                               shape=(0, segment_number, snippet_size, one_size),
-                               maxshape=(None, segment_number, snippet_size, one_size), dtype='float32')
+                               shape=(0, REGION_STEPS, one_size),
+                               maxshape=(None, REGION_STEPS, one_size), dtype='float32')
     valid_group.create_dataset('one_length',
                                shape=(0, 1),
                                maxshape=(None, 1),
                                dtype='int32')
     valid_group.create_dataset('two_data',
-                               shape=(0, segment_number, snippet_size, two_size),
-                               maxshape=(None, segment_number, snippet_size, two_size), dtype='float32')
+                               shape=(0, REGION_STEPS, two_size),
+                               maxshape=(None, REGION_STEPS, two_size), dtype='float32')
     valid_group.create_dataset('two_length',
                                shape=(0, 1),
                                maxshape=(None, 1),
@@ -390,8 +337,8 @@ if __name__ == '__main__':
 
     FEATURE_ROOT = '../result/ICMEW'
 
-    TRAIN_GROUP, VALID_GROUP = create_all_one_two_h5(FEATURE_ROOT, "123_sequence_data.hdf5", False)
-    TRP_TRAIN_GROUP, TRP_VALID_GROUP = create_snippet_h5(FEATURE_ROOT, "123_region_data.hdf5", snippet_size=12, segment_number=3)
+    TRAIN_GROUP, VALID_GROUP = create_all_one_two_h5(FEATURE_ROOT, "seq_data.hdf5", False)
+    TRP_TRAIN_GROUP, TRP_VALID_GROUP = create_region_h5(FEATURE_ROOT, "region_data.hdf5")
 
     for i, file_name in enumerate(DATA_FILE_NAMES):
         data_path = os.path.join(DATA_ROOT, file_name)
@@ -409,5 +356,4 @@ if __name__ == '__main__':
         base_name = data_path.split('/')[-1].split('.')[0]
         print("Begin Processing: %s" % base_name)
 
-        make_feature(data_path, label_path, hgroup, trp_h5_group, segment_number=3, snippet_size=12)
-
+        make_feature(data_path, label_path, hgroup, trp_h5_group)

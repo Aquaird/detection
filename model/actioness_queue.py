@@ -6,7 +6,7 @@ import time
 import tensorflow as tf
 
 PATH = {
-    "data_path": "../pre/result/ICMEW/15_250_trp_region_data.hdf5"
+    "data_path": "../pre/result/ICMEW/pre_data.hdf5"
 }
 
 TARGET_SIZE = 2
@@ -23,11 +23,12 @@ class data_queue(object):
 
         self.queue_feature_data = tf.placeholder(tf.float32, shape=self.feature_shape)
         self.queue_length_data = tf.placeholder(tf.int32, shape=[enqueue_size, 1])
-        self.queue_target_data = tf.placeholder(tf.float32, shape=[enqueue_size, TARGET_SIZE])
+        self.queue_label_data = tf.placeholder(tf.float32, shape=[enqueue_size, self.feature.shape[1], 1])
 
         self.queue = tf.FIFOQueue(capacity=1000, dtypes=[tf.float32, tf.float32, tf.int32], shapes=[self.feature.shape[1:], [TARGET_SIZE], [1]])
         self.enqueue_op = self.queue.enqueue_many([self.queue_feature_data, self.queue_target_data, self.queue_length_data])
         self.dequeue_op = self.queue.dequeue()
+
         self.feature_batch, self.target_batch, self.length_batch = tf.train.batch(self.dequeue_op, batch_size= batch_size, capacity=1000)
 
     def enqueue(self, sess, coord):
@@ -73,8 +74,8 @@ class data_queue(object):
         print("finished enqueueing")
 
 
-def raw_data(data_type, person_number, data_path):
-    f = h5py.File(data_path, 'r')
+def raw_data(data_type, person_number):
+    f = h5py.File(PATH["data_path"], 'r')
     data_all = f.get(data_type)
     feature_data = data_all.get(person_number+'_data')
     length_data = data_all.get(person_number+'_length')

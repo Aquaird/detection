@@ -44,7 +44,7 @@ class Action():
         #print("label finished")
         self.savitzky()
         #print("savitzky finished")
-        self.taylor()
+        #self.taylor()
         #print("taylor finished")
 
     def read_action(self):
@@ -69,15 +69,17 @@ class Action():
         make regression_seq
         '''
 
-        start_end = []
+        self.start_end = []
+        self.background = []
+        prev_end = 0
         self.label_seq = np.zeros([len(self.action_seq), 1], dtype='float32')
         with open(self._label_filename, 'r') as hlabelfile:
             reader = hlabelfile.readlines()
             for __row in reader:
                 info = __row.split(',')
-                start = int(info[1]) - 1
-                end = int(info[2]) - 1
-                for i in range(start - self._threshold, end):
+                start = int(info[1])
+                end = int(info[2])
+                for i in range(start, end):
                     if i >= len(self.label_seq):
                         print("Error: %s" % self._data_filename)
                         break
@@ -85,12 +87,15 @@ class Action():
                         self.TWO = True
                     self.label_seq[i] = int(info[0])
 
-                start_end.append([start, end])
+                self.start_end.append([start, end])
+                self.background.append([prev_end, start])
+                prev_end = end
+
         hlabelfile.close()
 
         # make regression data from the label seq
         self.regression_seq = np.zeros([len(self.action_seq), 2], dtype='float32')
-        for i in start_end:
+        for i in self.start_end:
             for j in range(-self._threshold, self._threshold):
                 if (i[0]+j < 0) or (i[1]+j >= len(self.action_seq)):
                     continue
